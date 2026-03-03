@@ -1,0 +1,792 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  SUPER_ADMIN
+  PORTFOLIO_MANAGER
+  PROPERTY_MANAGER
+  LEASING_AGENT
+  FINANCE_USER
+  MAINTENANCE_COORDINATOR
+  TENANT
+  GUARANTOR
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  APPLIED
+  SCREENED
+  APPROVED
+  LEASE_SIGNED
+  MOVED_IN
+  LOST
+}
+
+enum LeadSource {
+  WEBSITE
+  WALK_IN
+  AGENT_REFERRAL
+  PROPERTY24
+  PRIVATE_PROPERTY
+  GUMTREE
+  SOCIAL_MEDIA
+  PHONE
+  EMAIL
+  OTHER
+}
+
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  DOCUMENTS_PENDING
+  UNDER_REVIEW
+  SCREENING_IN_PROGRESS
+  SCREENING_COMPLETE
+  APPROVED
+  CONDITIONALLY_APPROVED
+  DECLINED
+  WITHDRAWN
+  EXPIRED
+}
+
+enum ScreeningCheckType {
+  IDENTITY_VERIFICATION
+  CREDIT_CHECK
+  TPN_CHECK
+  AFFORDABILITY
+  CRIMINAL_RECORD
+  EMPLOYMENT_VERIFICATION
+  REFERENCE_CHECK
+  PEP_SANCTIONS
+  DEEDS_SEARCH
+  COMPANY_CHECK
+}
+
+enum ScreeningStatus {
+  PENDING
+  IN_PROGRESS
+  PASSED
+  FAILED
+  REVIEW_REQUIRED
+  EXPIRED
+  ERROR
+}
+
+enum DocumentType {
+  SA_ID
+  PASSPORT
+  ASYLUM_PERMIT
+  PAYSLIP
+  BANK_STATEMENT
+  CTC_LETTER
+  PROOF_OF_RESIDENCE
+  EMPLOYMENT_CONFIRMATION
+  LANDLORD_REFERENCE
+  PERSONAL_REFERENCE
+  LEASE_AGREEMENT
+  CONDITION_REPORT
+  SIGNED_LEASE
+  OTHER
+}
+
+enum DocumentStatus {
+  UPLOADED
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum LeaseType {
+  FIXED_TERM
+  MONTH_TO_MONTH
+  STUDENT
+  CO_LIVING
+}
+
+enum LeaseStatus {
+  DRAFT
+  PENDING_SIGNATURE
+  ACTIVE
+  RENEWED
+  TERMINATED
+  EXPIRED
+  CANCELLED
+}
+
+enum UnitStatus {
+  VACANT
+  OCCUPIED
+  UNDER_MAINTENANCE
+  RESERVED
+  NOTICE_GIVEN
+}
+
+enum UnitType {
+  STUDIO
+  ONE_BED
+  TWO_BED
+  THREE_BED
+  FOUR_BED
+  PENTHOUSE
+  TOWNHOUSE
+  OTHER
+}
+
+enum PropertyType {
+  APARTMENT_COMPLEX
+  TOWNHOUSE_COMPLEX
+  MIXED_USE
+  STUDENT_RESIDENCE
+  SINGLE_RESIDENTIAL
+  ESTATE
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  PARTIALLY_PAID
+}
+
+enum PaymentMethod {
+  EFT
+  DEBICHECK
+  CARD
+  CASH
+  SNAPSCAN
+  ZAPPER
+  OTHER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  PARTIALLY_PAID
+  OVERDUE
+  CANCELLED
+  WRITTEN_OFF
+}
+
+enum ConsentType {
+  DATA_PROCESSING
+  CREDIT_CHECK
+  CRIMINAL_CHECK
+  MARKETING
+  ELECTRONIC_SIGNATURE
+  TERMS_AND_CONDITIONS
+}
+
+enum ConsentStatus {
+  GRANTED
+  REVOKED
+  EXPIRED
+}
+
+enum NotificationType {
+  EMAIL
+  SMS
+  WHATSAPP
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  READ
+}
+
+// ============================================================
+// CORE ENTITIES
+// ============================================================
+
+model Organisation {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  domain        String?  @unique
+  logo          String?
+  primaryColor  String?  @default("#1e40af")
+  secondaryColor String? @default("#3b82f6")
+  phone         String?
+  email         String?
+  website       String?
+  address       String?
+  city          String?
+  province      String?
+  postalCode    String?
+  country       String   @default("ZA")
+  taxNumber     String?
+  registrationNumber String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  users         User[]
+  portfolios    Portfolio[]
+  properties    Property[]
+  leads         Lead[]
+  leaseTemplates LeaseTemplate[]
+  auditLogs     AuditLog[]
+
+  @@map("organisations")
+}
+
+model User {
+  id                String    @id @default(cuid())
+  organisationId    String
+  email             String    @unique
+  passwordHash      String
+  firstName         String
+  lastName          String
+  phone             String?
+  role              UserRole
+  isActive          Boolean   @default(true)
+  emailVerified     Boolean   @default(false)
+  lastLoginAt       DateTime?
+  refreshToken      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  organisation      Organisation @relation(fields: [organisationId], references: [id])
+  assignedLeads     Lead[]       @relation("AgentLeads")
+  createdLeads      Lead[]       @relation("LeadCreatedBy")
+  applications      Application[] @relation("ApplicationReviewer")
+  tenant            Tenant?
+  auditLogs         AuditLog[]
+
+  @@index([organisationId])
+  @@index([email])
+  @@map("users")
+}
+
+// ============================================================
+// PROPERTY HIERARCHY
+// ============================================================
+
+model Portfolio {
+  id              String   @id @default(cuid())
+  organisationId  String
+  name            String
+  description     String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  properties      Property[]
+
+  @@index([organisationId])
+  @@map("portfolios")
+}
+
+model Property {
+  id              String       @id @default(cuid())
+  organisationId  String
+  portfolioId     String?
+  name            String
+  type            PropertyType
+  addressLine1    String
+  addressLine2    String?
+  suburb          String
+  city            String
+  province        String
+  postalCode      String
+  country         String       @default("ZA")
+  latitude        Float?
+  longitude       Float?
+  totalUnits      Int          @default(0)
+  description     String?
+  amenities       String[]     @default([])
+  images          String[]     @default([])
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  portfolio       Portfolio?   @relation(fields: [portfolioId], references: [id])
+  units           Unit[]
+  leads           Lead[]
+
+  @@index([organisationId])
+  @@index([portfolioId])
+  @@map("properties")
+}
+
+model Unit {
+  id              String     @id @default(cuid())
+  propertyId      String
+  unitNumber      String
+  type            UnitType
+  floor           Int?
+  bedrooms        Int        @default(1)
+  bathrooms       Int        @default(1)
+  sizeSqm         Float?
+  monthlyRent     Float
+  depositAmount   Float?
+  status          UnitStatus @default(VACANT)
+  description     String?
+  amenities       String[]   @default([])
+  images          String[]   @default([])
+  parkingBays     Int        @default(0)
+  isActive        Boolean    @default(true)
+  availableFrom   DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  property        Property   @relation(fields: [propertyId], references: [id])
+  leases          Lease[]
+  leads           Lead[]
+  applications    Application[]
+
+  @@unique([propertyId, unitNumber])
+  @@index([propertyId])
+  @@index([status])
+  @@map("units")
+}
+
+// ============================================================
+// LEAD & APPLICATION
+// ============================================================
+
+model Lead {
+  id              String     @id @default(cuid())
+  organisationId  String
+  propertyId      String?
+  unitId          String?
+  assignedAgentId String?
+  createdById     String?
+  firstName       String
+  lastName        String
+  email           String
+  phone           String
+  idNumber        String?
+  status          LeadStatus @default(NEW)
+  source          LeadSource @default(WEBSITE)
+  sourceDetail    String?
+  score           Int?
+  monthlyIncome   Float?
+  desiredMoveIn   DateTime?
+  desiredBedrooms Int?
+  notes           String?
+  lostReason      String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  property        Property?    @relation(fields: [propertyId], references: [id])
+  unit            Unit?        @relation(fields: [unitId], references: [id])
+  assignedAgent   User?        @relation("AgentLeads", fields: [assignedAgentId], references: [id])
+  createdBy       User?        @relation("LeadCreatedBy", fields: [createdById], references: [id])
+  application     Application?
+  communications  Communication[]
+
+  @@index([organisationId])
+  @@index([status])
+  @@index([assignedAgentId])
+  @@index([propertyId])
+  @@map("leads")
+}
+
+model Application {
+  id              String            @id @default(cuid())
+  leadId          String            @unique
+  unitId          String
+  reviewerId      String?
+  status          ApplicationStatus @default(DRAFT)
+  // Personal details
+  firstName       String
+  lastName        String
+  email           String
+  phone           String
+  idNumber        String?
+  dateOfBirth     DateTime?
+  nationality     String?           @default("ZA")
+  // Employment
+  employerName    String?
+  employerPhone   String?
+  jobTitle        String?
+  employmentStartDate DateTime?
+  monthlyGrossIncome  Float?
+  monthlyNetIncome    Float?
+  // Current address
+  currentAddress  String?
+  currentLandlord String?
+  currentLandlordPhone String?
+  currentRent     Float?
+  reasonForLeaving String?
+  // Move-in
+  desiredMoveIn   DateTime?
+  leaseDuration   Int?              @default(12)
+  numberOfOccupants Int?            @default(1)
+  hasPets         Boolean           @default(false)
+  petDetails      String?
+  hasVehicle      Boolean           @default(false)
+  vehicleDetails  String?
+  // Affordability
+  affordabilityScore Float?
+  debtToIncomeRatio  Float?
+  // Review
+  reviewNotes     String?
+  reviewedAt      DateTime?
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  declinedAt      DateTime?
+  declineReason   String?
+  expiresAt       DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  lead            Lead              @relation(fields: [leadId], references: [id])
+  unit            Unit              @relation(fields: [unitId], references: [id])
+  reviewer        User?             @relation("ApplicationReviewer", fields: [reviewerId], references: [id])
+  documents       Document[]
+  screeningChecks ScreeningCheck[]
+  occupants       Occupant[]
+  guarantors      Guarantor[]
+  consents        Consent[]
+  lease           Lease?
+
+  @@index([status])
+  @@index([unitId])
+  @@map("applications")
+}
+
+model Occupant {
+  id              String   @id @default(cuid())
+  applicationId   String
+  firstName       String
+  lastName        String
+  idNumber        String?
+  dateOfBirth     DateTime?
+  relationship    String?
+  isMinor         Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("occupants")
+}
+
+model Guarantor {
+  id              String   @id @default(cuid())
+  applicationId   String
+  userId          String?
+  firstName       String
+  lastName        String
+  email           String
+  phone           String
+  idNumber        String?
+  employerName    String?
+  monthlyIncome   Float?
+  relationship    String?
+  hasSignedGuarantee Boolean @default(false)
+  signedAt        DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("guarantors")
+}
+
+// ============================================================
+// SCREENING
+// ============================================================
+
+model ScreeningCheck {
+  id              String           @id @default(cuid())
+  applicationId   String
+  type            ScreeningCheckType
+  status          ScreeningStatus  @default(PENDING)
+  provider        String?
+  externalRef     String?
+  score           Float?
+  rawResponse     Json?
+  summary         String?
+  passed          Boolean?
+  checkedAt       DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  application     Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@index([type])
+  @@map("screening_checks")
+}
+
+// ============================================================
+// DOCUMENTS
+// ============================================================
+
+model Document {
+  id              String         @id @default(cuid())
+  applicationId   String?
+  tenantId        String?
+  leaseId         String?
+  type            DocumentType
+  status          DocumentStatus @default(UPLOADED)
+  fileName        String
+  fileSize        Int
+  mimeType        String
+  storageKey      String
+  storageUrl      String?
+  verifiedBy      String?
+  verifiedAt      DateTime?
+  rejectionReason String?
+  expiresAt       DateTime?
+  metadata        Json?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  application     Application?   @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  tenant          Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  lease           Lease?         @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+
+  @@index([applicationId])
+  @@index([tenantId])
+  @@index([type])
+  @@map("documents")
+}
+
+// ============================================================
+// LEASE
+// ============================================================
+
+model LeaseTemplate {
+  id              String   @id @default(cuid())
+  organisationId  String
+  name            String
+  leaseType       LeaseType
+  content         String
+  clauses         Json?
+  isDefault       Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  leases          Lease[]
+
+  @@index([organisationId])
+  @@map("lease_templates")
+}
+
+model Lease {
+  id              String      @id @default(cuid())
+  applicationId   String?     @unique
+  tenantId        String
+  unitId          String
+  templateId      String?
+  leaseType       LeaseType
+  status          LeaseStatus @default(DRAFT)
+  // Terms
+  startDate       DateTime
+  endDate         DateTime?
+  monthlyRent     Float
+  depositAmount   Float
+  escalationPct   Float?      @default(0)
+  noticePeriodDays Int        @default(30)
+  // Generated document
+  leaseContent    String?
+  leaseDocumentUrl String?
+  // Signatures
+  tenantSignedAt  DateTime?
+  tenantSignature String?
+  landlordSignedAt DateTime?
+  landlordSignature String?
+  guarantorSignedAt DateTime?
+  guarantorSignature String?
+  // Renewal
+  renewedFromId   String?
+  renewalOfferedAt DateTime?
+  renewalResponseAt DateTime?
+  // Termination
+  terminatedAt    DateTime?
+  terminationReason String?
+  moveOutDate     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  application     Application? @relation(fields: [applicationId], references: [id])
+  tenant          Tenant       @relation(fields: [tenantId], references: [id])
+  unit            Unit         @relation(fields: [unitId], references: [id])
+  template        LeaseTemplate? @relation(fields: [templateId], references: [id])
+  documents       Document[]
+  invoices        Invoice[]
+
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([status])
+  @@map("leases")
+}
+
+// ============================================================
+// TENANT
+// ============================================================
+
+model Tenant {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  idNumber        String?
+  dateOfBirth     DateTime?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  bankName        String?
+  bankAccountNumber String?
+  bankBranchCode  String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id])
+  leases          Lease[]
+  documents       Document[]
+  payments        Payment[]
+  communications  Communication[]
+
+  @@map("tenants")
+}
+
+// ============================================================
+// BILLING
+// ============================================================
+
+model Invoice {
+  id              String        @id @default(cuid())
+  leaseId         String
+  invoiceNumber   String        @unique
+  description     String?
+  amount          Float
+  vatAmount       Float         @default(0)
+  totalAmount     Float
+  status          InvoiceStatus @default(DRAFT)
+  dueDate         DateTime
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  lease           Lease         @relation(fields: [leaseId], references: [id])
+  payments        Payment[]
+
+  @@index([leaseId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("invoices")
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  tenantId        String
+  invoiceId       String?
+  amount          Float
+  method          PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  reference       String?
+  externalRef     String?
+  paidAt          DateTime?
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  tenant          Tenant        @relation(fields: [tenantId], references: [id])
+  invoice         Invoice?      @relation(fields: [invoiceId], references: [id])
+
+  @@index([tenantId])
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+// ============================================================
+// COMMUNICATION
+// ============================================================
+
+model Communication {
+  id              String   @id @default(cuid())
+  leadId          String?
+  tenantId        String?
+  type            NotificationType
+  subject         String?
+  body            String
+  sentAt          DateTime?
+  deliveredAt     DateTime?
+  readAt          DateTime?
+  status          NotificationStatus @default(PENDING)
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  lead            Lead?    @relation(fields: [leadId], references: [id])
+  tenant          Tenant?  @relation(fields: [tenantId], references: [id])
+
+  @@index([leadId])
+  @@index([tenantId])
+  @@map("communications")
+}
+
+// ============================================================
+// CONSENT & COMPLIANCE
+// ============================================================
+
+model Consent {
+  id              String       @id @default(cuid())
+  applicationId   String
+  type            ConsentType
+  status          ConsentStatus @default(GRANTED)
+  version         String        @default("1.0")
+  ipAddress       String?
+  userAgent       String?
+  grantedAt       DateTime      @default(now())
+  revokedAt       DateTime?
+  expiresAt       DateTime?
+
+  application     Application   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("consents")
+}
+
+// ============================================================
+// AUDIT
+// ============================================================
+
+model AuditLog {
+  id              String   @id @default(cuid())
+  organisationId  String
+  userId          String?
+  action          String
+  entityType      String
+  entityId        String
+  changes         Json?
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  user            User?        @relation(fields: [userId], references: [id])
+
+  @@index([organisationId])
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
