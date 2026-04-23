@@ -1,6 +1,4 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  transpilePackages: ['@tms/shared', '@tms/database'],
-};
+const nextConfig = {};
 
 module.exports = nextConfig;
