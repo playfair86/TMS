@@ -1,7 +1,23 @@
+import {
+  DEMO_USER,
+  DEMO_STATS,
+  DEMO_PIPELINE,
+  DEMO_PROPERTIES,
+  DEMO_LEADS,
+  DEMO_APPLICATIONS,
+  DEMO_LEASES,
+  DEMO_TENANTS,
+} from './demo-data';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
 class ApiClient {
   private token: string | null = null;
+  private demoMode = false;
+
+  isDemoMode() {
+    return this.demoMode;
+  }
 
   setToken(token: string) {
     this.token = token;
@@ -20,9 +36,11 @@ class ApiClient {
 
   clearToken() {
     this.token = null;
+    this.demoMode = false;
     if (typeof window !== 'undefined') {
       localStorage.removeItem('tms_token');
       localStorage.removeItem('tms_refresh_token');
+      localStorage.removeItem('tms_demo_mode');
     }
   }
 
@@ -39,7 +57,6 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    // Don't set Content-Type for FormData (file uploads)
     if (!(options.body instanceof FormData)) {
       headers['Content-Type'] = 'application/json';
     }
@@ -68,89 +85,141 @@ class ApiClient {
 
   // Auth
   async login(email: string, password: string) {
-    const res = await this.request<any>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    this.setToken(res.data.accessToken);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('tms_refresh_token', res.data.refreshToken);
+    try {
+      const res = await this.request<any>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+      this.setToken(res.data.accessToken);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tms_refresh_token', res.data.refreshToken);
+      }
+      return res.data;
+    } catch {
+      this.demoMode = true;
+      this.setToken('demo-token');
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tms_demo_mode', 'true');
+      }
+      return { user: DEMO_USER, accessToken: 'demo-token', refreshToken: 'demo-refresh' };
     }
-    return res.data;
   }
 
   async register(data: any) {
-    const res = await this.request<any>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-    this.setToken(res.data.accessToken);
-    return res.data;
+    try {
+      const res = await this.request<any>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      this.setToken(res.data.accessToken);
+      return res.data;
+    } catch {
+      this.demoMode = true;
+      this.setToken('demo-token');
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tms_demo_mode', 'true');
+      }
+      return { user: { ...DEMO_USER, ...data }, accessToken: 'demo-token' };
+    }
   }
 
   async getProfile() {
+    if (this.demoMode || (typeof window !== 'undefined' && localStorage.getItem('tms_demo_mode'))) {
+      this.demoMode = true;
+      return { success: true, data: DEMO_USER };
+    }
     return this.request<any>('/auth/profile');
   }
 
   // Properties
-  async getProperties(params?: Record<string, string>) {
-    const query = params ? '?' + new URLSearchParams(params).toString() : '';
-    return this.request<any>(`/properties${query}`);
+  async getProperties() {
+    try {
+      return await this.request<any>('/properties');
+    } catch {
+      return DEMO_PROPERTIES;
+    }
   }
 
   async getProperty(id: string) {
-    return this.request<any>(`/properties/${id}`);
+    try {
+      return await this.request<any>(`/properties/${id}`);
+    } catch {
+      return { data: DEMO_PROPERTIES.data.find(p => p.id === id) || DEMO_PROPERTIES.data[0] };
+    }
   }
 
   async createProperty(data: any) {
-    return this.request<any>('/properties', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    if (this.demoMode) {
+      const newProp = { id: 'prop-new-' + Date.now(), ...data, _count: { units: 0 } };
+      DEMO_PROPERTIES.data.push(newProp);
+      return { data: newProp };
+    }
+    return this.request<any>('/properties', { method: 'POST', body: JSON.stringify(data) });
   }
 
   async updateProperty(id: string, data: any) {
-    return this.request<any>(`/properties/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+    return this.request<any>(`/properties/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   }
 
   async getDashboardStats() {
-    return this.request<any>('/properties/dashboard/stats');
+    try {
+      return await this.request<any>('/properties/dashboard/stats');
+    } catch {
+      return DEMO_STATS;
+    }
   }
 
   // Units
   async getUnits(params?: Record<string, string>) {
     const query = params ? '?' + new URLSearchParams(params).toString() : '';
-    return this.request<any>(`/units${query}`);
+    try {
+      return await this.request<any>(`/units${query}`);
+    } catch {
+      return { data: [] };
+    }
   }
 
   async createUnit(data: any) {
-    return this.request<any>('/units', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    return this.request<any>('/units', { method: 'POST', body: JSON.stringify(data) });
   }
 
   // Leads
   async getLeads(params?: Record<string, string>) {
-    const query = params ? '?' + new URLSearchParams(params).toString() : '';
-    return this.request<any>(`/leads${query}`);
+    try {
+      const query = params ? '?' + new URLSearchParams(params).toString() : '';
+      return await this.request<any>(`/leads${query}`);
+    } catch {
+      const status = params?.status;
+      if (status) {
+        return { data: DEMO_LEADS.data.filter(l => l.status === status) };
+      }
+      return DEMO_LEADS;
+    }
   }
 
   async getLead(id: string) {
-    return this.request<any>(`/leads/${id}`);
+    try {
+      return await this.request<any>(`/leads/${id}`);
+    } catch {
+      return { data: DEMO_LEADS.data.find(l => l.id === id) || DEMO_LEADS.data[0] };
+    }
   }
 
   async createLead(data: any) {
-    return this.request<any>('/leads', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    if (this.demoMode) {
+      const newLead = { id: 'lead-new-' + Date.now(), ...data, score: 70, status: 'NEW' };
+      DEMO_LEADS.data.unshift(newLead);
+      return { data: newLead };
+    }
+    return this.request<any>('/leads', { method: 'POST', body: JSON.stringify(data) });
   }
 
   async updateLeadStatus(id: string, status: string, lostReason?: string) {
+    if (this.demoMode) {
+      const lead = DEMO_LEADS.data.find(l => l.id === id);
+      if (lead) lead.status = status;
+      return { data: lead };
+    }
     return this.request<any>(`/leads/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status, lostReason }),
@@ -158,24 +227,37 @@ class ApiClient {
   }
 
   async getPipelineStats() {
-    return this.request<any>('/leads/pipeline');
+    try {
+      return await this.request<any>('/leads/pipeline');
+    } catch {
+      return DEMO_PIPELINE;
+    }
   }
 
   // Applications
   async getApplications(params?: Record<string, string>) {
-    const query = params ? '?' + new URLSearchParams(params).toString() : '';
-    return this.request<any>(`/applications${query}`);
+    try {
+      const query = params ? '?' + new URLSearchParams(params).toString() : '';
+      return await this.request<any>(`/applications${query}`);
+    } catch {
+      const status = params?.status;
+      if (status) {
+        return { data: DEMO_APPLICATIONS.data.filter(a => a.status === status) };
+      }
+      return DEMO_APPLICATIONS;
+    }
   }
 
   async getApplication(id: string) {
-    return this.request<any>(`/applications/${id}`);
+    try {
+      return await this.request<any>(`/applications/${id}`);
+    } catch {
+      return { data: DEMO_APPLICATIONS.data.find(a => a.id === id) || DEMO_APPLICATIONS.data[0] };
+    }
   }
 
   async createApplication(data: any) {
-    return this.request<any>('/applications', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    return this.request<any>('/applications', { method: 'POST', body: JSON.stringify(data) });
   }
 
   async reviewApplication(id: string, decision: string, notes?: string, declineReason?: string) {
@@ -199,19 +281,28 @@ class ApiClient {
 
   // Leases
   async getLeases(params?: Record<string, string>) {
-    const query = params ? '?' + new URLSearchParams(params).toString() : '';
-    return this.request<any>(`/leases${query}`);
+    try {
+      const query = params ? '?' + new URLSearchParams(params).toString() : '';
+      return await this.request<any>(`/leases${query}`);
+    } catch {
+      const status = params?.status;
+      if (status) {
+        return { data: DEMO_LEASES.data.filter(l => l.status === status) };
+      }
+      return DEMO_LEASES;
+    }
   }
 
   async getLease(id: string) {
-    return this.request<any>(`/leases/${id}`);
+    try {
+      return await this.request<any>(`/leases/${id}`);
+    } catch {
+      return { data: DEMO_LEASES.data.find(l => l.id === id) || DEMO_LEASES.data[0] };
+    }
   }
 
   async createLease(data: any) {
-    return this.request<any>('/leases', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    return this.request<any>('/leases', { method: 'POST', body: JSON.stringify(data) });
   }
 
   async signLease(id: string, role: string, signature: string) {
@@ -223,12 +314,31 @@ class ApiClient {
 
   // Tenants
   async getTenants(params?: Record<string, string>) {
-    const query = params ? '?' + new URLSearchParams(params).toString() : '';
-    return this.request<any>(`/tenants${query}`);
+    try {
+      const query = params ? '?' + new URLSearchParams(params).toString() : '';
+      return await this.request<any>(`/tenants${query}`);
+    } catch {
+      const search = params?.search?.toLowerCase();
+      if (search) {
+        return {
+          data: DEMO_TENANTS.data.filter(
+            t =>
+              t.user?.firstName.toLowerCase().includes(search) ||
+              t.user?.lastName.toLowerCase().includes(search) ||
+              t.user?.email.toLowerCase().includes(search),
+          ),
+        };
+      }
+      return DEMO_TENANTS;
+    }
   }
 
   async getTenant(id: string) {
-    return this.request<any>(`/tenants/${id}`);
+    try {
+      return await this.request<any>(`/tenants/${id}`);
+    } catch {
+      return { data: DEMO_TENANTS.data.find(t => t.id === id) || DEMO_TENANTS.data[0] };
+    }
   }
 
   // Documents
@@ -238,16 +348,16 @@ class ApiClient {
     if (data.applicationId) formData.append('applicationId', data.applicationId);
     if (data.tenantId) formData.append('tenantId', data.tenantId);
     formData.append('type', data.type);
-
-    return this.request<any>('/documents/upload', {
-      method: 'POST',
-      body: formData,
-    });
+    return this.request<any>('/documents/upload', { method: 'POST', body: formData });
   }
 
   // Portfolios
   async getPortfolios() {
-    return this.request<any>('/properties/portfolios');
+    try {
+      return await this.request<any>('/properties/portfolios');
+    } catch {
+      return { data: [] };
+    }
   }
 
   async createPortfolio(data: any) {

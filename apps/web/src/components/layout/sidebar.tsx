@@ -55,6 +55,11 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-gray-200 p-3">
+        {typeof window !== 'undefined' && localStorage.getItem('tms_demo_mode') && (
+          <div className="mb-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700 text-center">
+            Demo Mode — Sample Data
+          </div>
+        )}
         <button
           onClick={() => {
             api.logout();
